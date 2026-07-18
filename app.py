@@ -12,10 +12,13 @@ pend_miskin, Pertumbuhan_Inklusif, Kategori_Inklusif)
 """
 
 import io
+import re
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 # ----------------------------------------------------------------------------
@@ -113,6 +116,40 @@ def _to_numeric_id(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
+def normalize_github_url(url: str) -> str:
+    """Ubah link GitHub biasa (blob) atau link Google Sheets menjadi link
+    yang bisa diunduh langsung (raw.githubusercontent.com / export csv)."""
+    url = url.strip()
+
+    # github.com/user/repo/blob/branch/path -> raw.githubusercontent.com/user/repo/branch/path
+    m = re.match(r"https?://github\.com/([^/]+)/([^/]+)/blob/(.+)", url)
+    if m:
+        user, repo, rest = m.groups()
+        return f"https://raw.githubusercontent.com/{user}/{repo}/{rest}"
+
+    # github.com/user/repo/raw/branch/path -> sudah bisa diunduh langsung, biarkan
+    # sudah berupa raw.githubusercontent.com -> biarkan apa adanya
+    return url
+
+
+@st.cache_data(show_spinner=False)
+def load_data_from_url(url: str) -> pd.DataFrame:
+    url = normalize_github_url(url)
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    content = resp.content
+
+    if url.lower().endswith((".xlsx", ".xls")):
+        df = pd.read_excel(io.BytesIO(content))
+    else:
+        text = content.decode("utf-8", errors="ignore")
+        first_line = text.split("\n")[0]
+        sep = ";" if first_line.count(";") > first_line.count(",") else ","
+        df = pd.read_csv(io.StringIO(text), sep=sep)
+
+    return _postprocess_df(df)
+
+
 @st.cache_data(show_spinner=False)
 def load_data(file) -> pd.DataFrame:
     if file is None:
@@ -128,6 +165,10 @@ def load_data(file) -> pd.DataFrame:
         else:
             df = pd.read_excel(file)
 
+    return _postprocess_df(df)
+
+
+def _postprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip() for c in df.columns]
 
     numeric_candidates = list(SECTOR_COLS.keys()) + list(SOCIAL_COLS.keys()) + ["PDRB", "Pertumbuhan_Inklusif"]
@@ -168,14 +209,51 @@ def kpi_delta(current, previous):
 # SIDEBAR — UPLOAD & FILTER
 # ----------------------------------------------------------------------------
 st.sidebar.title("📊 Panel Kontrol")
-st.sidebar.markdown("Unggah dataset panel PDRB & Pertumbuhan Inklusif (.xlsx / .csv).")
+st.sidebar.markdown("Muat dataset panel PDRB & Pertumbuhan Inklusif (.xlsx / .csv).")
 
-uploaded_file = st.sidebar.file_uploader("Dataset", type=["xlsx", "xls", "csv"])
-if uploaded_file is None:
-    st.sidebar.info("Belum ada file diunggah — menampilkan **data contoh** (Bantaeng & Barru). "
-                     "Unggah file lengkap Anda untuk analisis penuh seluruh kabupaten/kota.")
+sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link GitHub"], horizontal=True)
 
-df_raw = load_data(uploaded_file)
+df_raw = None
+load_error = None
+
+if sumber_data == "Upload file":
+    uploaded_file = st.sidebar.file_uploader("Dataset", type=["xlsx", "xls", "csv"])
+    if uploaded_file is None:
+        st.sidebar.info("Belum ada file diunggah — menampilkan **data contoh** (Bantaeng & Barru). "
+                         "Unggah file lengkap Anda untuk analisis penuh seluruh kabupaten/kota.")
+    try:
+        df_raw = load_data(uploaded_file)
+    except Exception as e:
+        load_error = str(e)
+
+else:  # Link GitHub
+    st.sidebar.caption(
+        "Tempel link **raw** GitHub (mis. `https://raw.githubusercontent.com/user/repo/main/data.csv`) "
+        "atau link biasa `https://github.com/user/repo/blob/main/data.xlsx` — akan dikonversi otomatis."
+    )
+    github_url = st.sidebar.text_input("Link dataset GitHub", placeholder="https://github.com/user/repo/blob/main/data.xlsx")
+    muat_btn = st.sidebar.button("🔄 Muat dari GitHub", use_container_width=True)
+
+    if "github_df" not in st.session_state:
+        st.session_state["github_df"] = None
+
+    if muat_btn and github_url:
+        with st.spinner("Mengambil data dari GitHub..."):
+            try:
+                st.session_state["github_df"] = load_data_from_url(github_url)
+                st.sidebar.success("Dataset berhasil dimuat dari GitHub.")
+            except Exception as e:
+                st.session_state["github_df"] = None
+                load_error = f"Gagal memuat dari link tersebut: {e}"
+
+    if st.session_state.get("github_df") is not None:
+        df_raw = st.session_state["github_df"]
+    else:
+        st.sidebar.info("Belum ada data dimuat dari GitHub — menampilkan **data contoh** (Bantaeng & Barru).")
+        df_raw = load_data(None)
+
+if load_error:
+    st.sidebar.error(load_error)
 
 if df_raw.empty or not {"kabupaten", "tahun"}.issubset(df_raw.columns):
     st.error("Dataset tidak valid. Pastikan minimal terdapat kolom 'kabupaten' dan 'tahun'.")
@@ -470,4 +548,4 @@ with tab_data:
     # st.download_button("⬇️ Unduh data terfilter (CSV)", csv_bytes, "data_terfilter.csv", "text/csv")
 
 st.markdown("---")
-st.caption("Dashboard dibuat dengan Cinta & python · Sumber data: diolah oleh TIM ISEI MAKASSAR")
+st.caption("Dashboard dibuat dengan Cinta & Python · Data diolah TIM ISEI MAKASSAR.")
