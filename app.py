@@ -209,7 +209,7 @@ def kpi_delta(current, previous):
 # SIDEBAR — UPLOAD & FILTER
 # ----------------------------------------------------------------------------
 st.sidebar.title("📊 Panel Kontrol")
-st.sidebar.markdown("Muat dataset panel PDRB & Pertumbuhan Inklusif (.xlsx / .csv).")
+st.sidebar.markdown("Muat dataset panel kab/kota (.xlsx / .csv).")
 
 sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link Dataset"], horizontal=True)
 
@@ -292,7 +292,7 @@ if df.empty:
 # ----------------------------------------------------------------------------
 # HEADER
 # ----------------------------------------------------------------------------
-st.title("📊 Dashboard Pertumbuhan Ekonomi Inklusif")
+st.title("📊 Dashboard Iclusive Growth")
 st.markdown(
     "Analisis panel PDRB sektoral, indikator sosial-ekonomi, dan **kontribusi sektor "
     "terhadap Pertumbuhan Inklusif** kabupaten/kota."
