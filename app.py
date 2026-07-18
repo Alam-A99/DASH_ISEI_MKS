@@ -291,7 +291,7 @@ if df.empty:
 # ----------------------------------------------------------------------------
 # HEADER
 # ----------------------------------------------------------------------------
-st.title("📊 Dashboard Iclusive Growth")
+st.title("📊 Dashboard Inclusive Growth")
 st.markdown(
     "Analisis panel PDRB sektoral, indikator sosial-ekonomi, dan **kontribusi sektor "
     "terhadap Pertumbuhan Inklusif** kabupaten/kota."
