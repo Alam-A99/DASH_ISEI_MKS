@@ -117,8 +117,7 @@ def _to_numeric_id(series: pd.Series) -> pd.Series:
 
 
 def normalize_github_url(url: str) -> str:
-    """Ubah link GitHub biasa (blob) atau link Google Sheets menjadi link
-    yang bisa diunduh langsung (raw.githubusercontent.com / export csv)."""
+    """Ubah link GitHub atau link Google Sheets"""
     url = url.strip()
 
     # github.com/user/repo/blob/branch/path -> raw.githubusercontent.com/user/repo/branch/path
@@ -238,10 +237,10 @@ else:  # Link GitHub
         st.session_state["github_df"] = None
 
     if muat_btn and github_url:
-        with st.spinner("Mengambil data dari GitHub..."):
+        with st.spinner("Loading dataset..."):
             try:
                 st.session_state["github_df"] = load_data_from_url(github_url)
-                st.sidebar.success("Dataset berhasil dimuat dari GitHub.")
+                st.sidebar.success("Dataset berhasil dimuat.")
             except Exception as e:
                 st.session_state["github_df"] = None
                 load_error = f"Gagal memuat dari link tersebut: {e}"
@@ -249,7 +248,7 @@ else:  # Link GitHub
     if st.session_state.get("github_df") is not None:
         df_raw = st.session_state["github_df"]
     else:
-        st.sidebar.info("Belum ada data dimuat dari GitHub — menampilkan **data contoh** (Bantaeng & Barru).")
+        st.sidebar.info("Belum ada data dimuat — menampilkan **data contoh** (Bantaeng & Barru).")
         df_raw = load_data(None)
 
 if load_error:
