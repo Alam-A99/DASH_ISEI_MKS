@@ -22,7 +22,7 @@ import streamlit as st
 # KONFIGURASI HALAMAN
 # ----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Pertumbuhan Inklusif Sulsel",
+    page_title="Dashboard Inklusif Sulsel",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
