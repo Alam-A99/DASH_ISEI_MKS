@@ -209,7 +209,7 @@ def kpi_delta(current, previous):
 # SIDEBAR — UPLOAD & FILTER
 # ----------------------------------------------------------------------------
 st.sidebar.title("📊 Panel Kontrol")
-st.sidebar.markdown("Muat dataset panel kab/kota (.xlsx / .csv).")
+st.sidebar.markdown("Muat dataset panel (.xlsx / .csv).")
 
 sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link Dataset"], horizontal=True)
 
@@ -232,7 +232,7 @@ else:  # Link GitHub
         "atau link biasa `https://github.com/user/repo/blob/main/data.xlsx` — akan dikonversi otomatis."
     )
     github_url = st.sidebar.text_input("Link dataset GitHub", placeholder="https://github.com/user/repo/blob/main/data.xlsx")
-    muat_btn = st.sidebar.button("🔄 Muat dari GitHub", use_container_width=True)
+    muat_btn = st.sidebar.button("🔄 Tampilkan Data", use_container_width=True)
 
     if "github_df" not in st.session_state:
         st.session_state["github_df"] = None
