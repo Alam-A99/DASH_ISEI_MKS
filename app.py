@@ -208,7 +208,7 @@ def kpi_delta(current, previous):
 # SIDEBAR — UPLOAD & FILTER
 # ----------------------------------------------------------------------------
 st.sidebar.title("📊 Panel Kontrol")
-st.sidebar.markdown("Muat dataset panel (.xlsx / .csv).")
+st.sidebar.markdown("Upload dataset panel (.xlsx/.csv).")
 
 sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link Dataset"], horizontal=True)
 
