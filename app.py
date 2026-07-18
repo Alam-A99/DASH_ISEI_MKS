@@ -211,7 +211,7 @@ def kpi_delta(current, previous):
 st.sidebar.title("📊 Panel Kontrol")
 st.sidebar.markdown("Muat dataset panel PDRB & Pertumbuhan Inklusif (.xlsx / .csv).")
 
-sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link GitHub"], horizontal=True)
+sumber_data = st.sidebar.radio("Sumber data", ["Upload file", "Link Dataset"], horizontal=True)
 
 df_raw = None
 load_error = None
