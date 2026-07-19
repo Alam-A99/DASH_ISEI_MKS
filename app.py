@@ -285,7 +285,7 @@ else:
     selected_kats = None
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Dashboard Pertumbuhan Inklusif · Data Panel Kab/Kota")
+st.sidebar.caption("Dashboard Pertumbuhan Inklusif · Data Panel Kab/Kota Sulsel")
 
 mask = (
     df_raw["kabupaten"].isin(selected_kabs)
