@@ -238,10 +238,10 @@ if sumber_data == "Upload file":
 
 else:  # Link GitHub
     st.sidebar.caption(
-        "Tempel link **raw** GitHub (mis. `https://raw.githubusercontent.com/user/repo/main/data.csv`) "
+        "Paste link **Dataset** (mis. `https://raw.githubusercontent.com/user/repo/main/data.csv`) "
         "atau link biasa `https://github.com/user/repo/blob/main/data.xlsx` — akan dikonversi otomatis."
     )
-    github_url = st.sidebar.text_input("Link dataset GitHub", placeholder="https://github.com/user/repo/blob/main/data.xlsx")
+    github_url = st.sidebar.text_input("Link dataset ", placeholder="https://github.com/user/repo/blob/main/data.xlsx")
     muat_btn = st.sidebar.button("🔄 Tampilkan Data", use_container_width=True)
 
     if "github_df" not in st.session_state:
