@@ -543,7 +543,7 @@ with tab_perbandingan:
 with tab_data:
     st.subheader("Data Terfilter")
     st.dataframe(df, use_container_width=True, height=500)
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    # csv_bytes = df.to_csv(index=False).encode("utf-8")
     # st.download_button("⬇️ Unduh data terfilter (CSV)", csv_bytes, "data_terfilter.csv", "text/csv")
 
 st.markdown("---")
