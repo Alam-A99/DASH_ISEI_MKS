@@ -19,6 +19,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
+import statsmodels.api as sm
 import streamlit as st
 
 # ----------------------------------------------------------------------------
@@ -73,6 +74,16 @@ CATEGORY_COLORS = {
     "CUKUP INKLUSIF": "#fdae61",
     "KURANG INKLUSIF": "#d73027",
     "TIDAK INKLUSIF": "#a50026",
+}
+
+# Variabel yang boleh dipilih sebagai Variabel Dependen (Y) pada tab Model Regresi Panel.
+# Kolom lain (sektoral + sosial-ekonomi sisanya) otomatis menjadi kandidat Variabel Independen (X).
+DEPENDENT_VAR_OPTIONS = {
+    "pertumbuhan": "Pertumbuhan Ekonomi (%)",
+    "Pertumbuhan_Inklusif": "Indeks Pertumbuhan Inklusif",
+    "gini": "Rasio Gini",
+    "unemploy": "Tingkat Pengangguran Terbuka (%)",
+    "pend_miskin": "Rata-rata Lama Pendidikan Penduduk Miskin",
 }
 
 # ----------------------------------------------------------------------------
@@ -297,8 +308,8 @@ st.markdown(
     "terhadap Pertumbuhan Inklusif** kabupaten/kota."
 )
 
-tab_overview, tab_sektoral, tab_sosial, tab_perbandingan, tab_data = st.tabs(
-    ["🏠 Ringkasan", "🏭 Kontribusi Sektoral", "👥 Indikator Sosial", "⚖️ Perbandingan Wilayah", "📄 Data"]
+tab_overview, tab_sektoral, tab_sosial, tab_perbandingan, tab_regresi = st.tabs(
+    ["🏠 Ringkasan", "🏭 Kontribusi Sektoral", "👥 Indikator Sosial", "⚖️ Perbandingan Wilayah", "📈 Model Regresi Panel"]
 )
 
 # ----------------------------------------------------------------------------
@@ -538,23 +549,151 @@ with tab_perbandingan:
     st.plotly_chart(fig_scatter_all, use_container_width=True)
 
 # ----------------------------------------------------------------------------
-# TAB 5 — DATA MENTAH
+# TAB 5 — MODEL REGRESI PANEL
 # ----------------------------------------------------------------------------
-with tab_data:
-    st.subheader("Data Terfilter")
+with tab_regresi:
+    st.subheader("📈 Model Regresi Data Panel")
     st.markdown(
-        """
-        <style>
-        .st-key-raw_data_table [data-testid="stElementToolbarButton"][title="Download as CSV"] {
-            display: none;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
+        "Pilih **Variabel Dependen (Y)** dari daftar berikut: *Pertumbuhan Ekonomi, Pertumbuhan Inklusif, "
+        "Rasio Gini, Tingkat Pengangguran,* atau *Rata-rata Lama Pendidikan Penduduk Miskin*. "
+        "Seluruh variabel lain (sektoral & sosial-ekonomi) otomatis menjadi kandidat **Variabel Independen (X)**."
     )
-    st.dataframe(df, use_container_width=True, height=500, key="raw_data_table")
-    # csv_bytes = df.to_csv(index=False).encode("utf-8")
-    # st.download_button("⬇️ Unduh data terfilter (CSV)", csv_bytes, "data_terfilter.csv", "text/csv")
+
+    dep_options_available = {k: v for k, v in DEPENDENT_VAR_OPTIONS.items() if k in df.columns}
+
+    if not dep_options_available:
+        st.warning("Tidak ada variabel dependen (pertumbuhan, Pertumbuhan_Inklusif, gini, unemploy, pend_miskin) "
+                    "yang tersedia pada dataset ini.")
+    else:
+        col_sel1, col_sel2 = st.columns([2, 1])
+        with col_sel1:
+            dep_var = st.selectbox(
+                "Variabel Dependen (Y)",
+                list(dep_options_available.keys()),
+                format_func=lambda c: dep_options_available[c],
+            )
+        with col_sel2:
+            model_type = st.selectbox(
+                "Jenis Model Panel",
+                [
+                    "Pooled OLS",
+                    "Fixed Effect - Entity (Kabupaten/Kota)",
+                    "Fixed Effect - Two Way (Kabupaten/Kota & Tahun)",
+                ],
+            )
+
+        label_map = {**SECTOR_COLS, **SOCIAL_COLS, "PDRB": "PDRB"}
+        all_numeric_candidates = sector_cols + [c for c in SOCIAL_COLS if c in df.columns] + (["PDRB"] if "PDRB" in df.columns else [])
+        indep_candidates = [c for c in all_numeric_candidates if c != dep_var]
+
+        selected_indep = st.multiselect(
+            "Variabel Independen (X)",
+            indep_candidates,
+            default=indep_candidates,
+            format_func=lambda c: label_map.get(c, c),
+        )
+
+        if len(selected_indep) == 0:
+            st.info("Pilih minimal satu variabel independen.")
+        else:
+            reg_df = df[["kabupaten", "tahun", dep_var] + selected_indep].dropna().copy()
+
+            if len(reg_df) < len(selected_indep) + 2:
+                st.warning("Jumlah observasi tidak cukup untuk menjalankan regresi dengan kombinasi variabel yang dipilih. "
+                            "Coba kurangi jumlah variabel independen atau perluas filter kabupaten/tahun.")
+            else:
+                Y = reg_df[dep_var].astype(float)
+                X = reg_df[selected_indep].copy()
+
+                if model_type == "Fixed Effect - Entity (Kabupaten/Kota)":
+                    entity_dummies = pd.get_dummies(reg_df["kabupaten"], drop_first=True, prefix="FE_kab")
+                    X = pd.concat([X, entity_dummies], axis=1)
+                elif model_type == "Fixed Effect - Two Way (Kabupaten/Kota & Tahun)":
+                    entity_dummies = pd.get_dummies(reg_df["kabupaten"], drop_first=True, prefix="FE_kab")
+                    time_dummies = pd.get_dummies(reg_df["tahun"].astype(str), drop_first=True, prefix="FE_thn")
+                    X = pd.concat([X, entity_dummies, time_dummies], axis=1)
+
+                X = X.astype(float)
+                X = sm.add_constant(X)
+
+                try:
+                    model = sm.OLS(Y, X).fit(cov_type="cluster", cov_kwds={"groups": reg_df["kabupaten"]})
+                except Exception:
+                    model = sm.OLS(Y, X).fit()
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("N Observasi", f"{int(model.nobs)}")
+                m2.metric("R-squared", f"{model.rsquared:.3f}")
+                m3.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
+                m4.metric("F-statistic", f"{model.fvalue:.2f}" if model.fvalue is not None else "-")
+
+                st.markdown("---")
+                st.subheader("Hasil Estimasi Koefisien (Variabel Utama)")
+
+                main_vars = ["const"] + selected_indep
+                coef_df = pd.DataFrame({
+                    "Variabel": ["Konstanta" if v == "const" else label_map.get(v, v) for v in main_vars],
+                    "Koefisien": [model.params[v] for v in main_vars],
+                    "Std. Error": [model.bse[v] for v in main_vars],
+                    "t-stat": [model.tvalues[v] for v in main_vars],
+                    "p-value": [model.pvalues[v] for v in main_vars],
+                })
+                coef_df["Signifikan (p<0,05)"] = coef_df["p-value"] < 0.05
+
+                def _highlight_sig(row):
+                    color = "background-color: #d4edda" if row["Signifikan (p<0,05)"] else ""
+                    return [color] * len(row)
+
+                st.dataframe(
+                    coef_df.style.apply(_highlight_sig, axis=1).format({
+                        "Koefisien": "{:.4f}", "Std. Error": "{:.4f}", "t-stat": "{:.3f}", "p-value": "{:.4f}",
+                    }),
+                    use_container_width=True,
+                    height=min(450, 45 * len(coef_df) + 40),
+                )
+
+                if model_type != "Pooled OLS":
+                    with st.expander("Lihat koefisien Fixed Effect (dummy kabupaten/tahun)"):
+                        fe_vars = [v for v in X.columns if v.startswith("FE_")]
+                        if fe_vars:
+                            fe_df = pd.DataFrame({
+                                "Dummy": fe_vars,
+                                "Koefisien": [model.params[v] for v in fe_vars],
+                                "p-value": [model.pvalues[v] for v in fe_vars],
+                            })
+                            st.dataframe(fe_df, use_container_width=True, height=300)
+
+                st.markdown("---")
+                st.subheader("Visualisasi Koefisien Variabel Independen")
+                plot_df = coef_df[coef_df["Variabel"] != "Konstanta"].sort_values("Koefisien")
+                fig_coef = px.bar(
+                    plot_df, x="Koefisien", y="Variabel", orientation="h",
+                    color="Signifikan (p<0,05)",
+                    color_discrete_map={True: "#1a9850", False: "#bdbdbd"},
+                    error_x=plot_df["Std. Error"] * 1.96,
+                    title=f"Koefisien Regresi terhadap {dep_options_available[dep_var]} ({model_type})",
+                )
+                fig_coef.update_layout(height=max(350, 30 * len(plot_df)), margin=dict(t=40))
+                st.plotly_chart(fig_coef, use_container_width=True)
+
+                st.markdown("---")
+                st.subheader("Prediksi vs Aktual")
+                pred_df = reg_df[["kabupaten", "tahun"]].copy()
+                pred_df["Aktual"] = Y.values
+                pred_df["Prediksi"] = model.predict(X).values
+                fig_pred = px.scatter(
+                    pred_df, x="Aktual", y="Prediksi", color="kabupaten", hover_data=["tahun"],
+                    title="Perbandingan Nilai Aktual vs Prediksi Model",
+                )
+                min_v = float(pred_df[["Aktual", "Prediksi"]].min().min())
+                max_v = float(pred_df[["Aktual", "Prediksi"]].max().max())
+                fig_pred.add_shape(type="line", x0=min_v, y0=min_v, x1=max_v, y1=max_v,
+                                    line=dict(color="gray", dash="dash"))
+                fig_pred.update_layout(height=480)
+                st.plotly_chart(fig_pred, use_container_width=True)
+
+                with st.expander("📋 Ringkasan Model Lengkap (statsmodels summary)"):
+                    st.text(model.summary().as_text())
 
 st.markdown("---")
 st.caption("Dashboard dibuat dengan Cinta & Python · Data diolah TIM ISEI MAKASSAR.")
