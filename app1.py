@@ -201,6 +201,82 @@ def kpi_delta(current, previous):
     return (current - previous) / previous * 100
 
 
+# ============================================================================
+# FUNGSI RATING (Standar BPS / Kuartil)
+# ============================================================================
+def rate_gini(val):
+    """Rating Rasio Gini (standar BPS). Rendah = baik."""
+    if pd.isna(val): return "N/A"
+    if val <= 0.3: return "Rendah"
+    elif val <= 0.4: return "Sedang"
+    elif val <= 0.5: return "Tinggi"
+    else: return "Sangat Tinggi"
+
+
+def rate_ipm(val):
+    """Rating IPM (standar BPS). Tinggi = baik."""
+    if pd.isna(val): return "N/A"
+    if val >= 80: return "Sangat Tinggi"
+    elif val >= 70: return "Tinggi"
+    elif val >= 60: return "Sedang"
+    else: return "Rendah"
+
+
+def rate_miskin(val):
+    """Rating Kemiskinan. Rendah = baik."""
+    if pd.isna(val): return "N/A"
+    if val <= 5: return "Sangat Rendah"
+    elif val <= 10: return "Rendah"
+    elif val <= 15: return "Sedang"
+    elif val <= 20: return "Tinggi"
+    else: return "Sangat Tinggi"
+
+
+def rate_unemploy(val):
+    """Rating Pengangguran. Rendah = baik."""
+    if pd.isna(val): return "N/A"
+    if val <= 3: return "Sangat Rendah"
+    elif val <= 5: return "Rendah"
+    elif val <= 7: return "Sedang"
+    elif val <= 10: return "Tinggi"
+    else: return "Sangat Tinggi"
+
+
+def rate_quartile(val, quartiles):
+    """Rating berdasarkan kuartil data (untuk belanja, PDRB, dsb)."""
+    if pd.isna(val) or quartiles is None or pd.isna(quartiles).any():
+        return "N/A"
+    if val <= quartiles[0.25]: return "Rendah"
+    elif val <= quartiles[0.5]: return "Sedang"
+    elif val <= quartiles[0.75]: return "Tinggi"
+    else: return "Sangat Tinggi"
+
+
+def _build_rating_row_style(row, is_good_when_high=False):
+    """Styler DataFrame untuk mewarnai kolom 'Rating'."""
+    rating = row.get("Rating", "N/A")
+    # Default: nilai tinggi = buruk (merah), nilai rendah = baik (hijau)
+    color_map = {
+        "Sangat Tinggi": "background-color: #d73027; color: white",
+        "Tinggi": "background-color: #fc8d59",
+        "Sedang": "background-color: #fee08b",
+        "Rendah": "background-color: #91cf60",
+        "Sangat Rendah": "background-color: #1a9850; color: white",
+        "N/A": "",
+    }
+    # Balik warna jika tinggi = baik (mis. IPM, Belanja)
+    if is_good_when_high:
+        color_map = {
+            "Sangat Tinggi": "background-color: #1a9850; color: white",
+            "Tinggi": "background-color: #91cf60",
+            "Sedang": "background-color: #fee08b",
+            "Rendah": "background-color: #fc8d59",
+            "Sangat Rendah": "background-color: #d73027; color: white",
+            "N/A": "",
+        }
+    return [color_map.get(rating, "")] * len(row)
+
+
 # ----------------------------------------------------------------------------
 # SIDEBAR — UPLOAD & FILTER
 # ----------------------------------------------------------------------------
@@ -224,7 +300,7 @@ if sumber_data == "Upload file":
 else:
     st.sidebar.caption(
         "Paste link **Dataset** (mis. `https://raw.githubusercontent.com/user/repo/main/data.xlsx`) "
-        "atau link biasa `https://github.com/user/repo/blob/main/data.xlsx."
+        "atau link biasa `https://github.com/user/repo/blob/main/data.xlsx`."
     )
     github_url = st.sidebar.text_input(
         "Link dataset",
@@ -386,7 +462,7 @@ with tab_overview:
         st.plotly_chart(fig_rank, use_container_width=True)
 
 # ----------------------------------------------------------------------------
-# TAB 2 — KONTRIBUSI SEKTORAL (fokus utama)
+# TAB 2 — KONTRIBUSI SEKTORAL
 # ----------------------------------------------------------------------------
 with tab_sektoral:
     st.subheader("Struktur & Kontribusi Sektor Lapangan Usaha")
@@ -469,7 +545,7 @@ with tab_sektoral:
     st.plotly_chart(fig_heat, use_container_width=True)
 
 # ----------------------------------------------------------------------------
-# TAB 3 — BELANJA PEMERINTAH (BARU)
+# TAB 3 — BELANJA PEMERINTAH (DENGAN RATING & PERUBAHAN)
 # ----------------------------------------------------------------------------
 with tab_gov:
     st.subheader("🏛️ Komposisi & Alokasi Belanja Pemerintah per Fungsi")
@@ -553,28 +629,158 @@ with tab_gov:
         else:
             st.info("Belum cukup data berurutan untuk menghitung korelasi pertumbuhan belanja.")
 
-        # Perbandingan total belanja antar kabupaten (tahun terakhir)
+        # ====================================================================
+        # 🆕 BARU: RATING & PERUBAHAN TOTAL BELANJA
+        # ====================================================================
         st.markdown("---")
-        st.subheader(f"Perbandingan Total Belanja Pemerintah ({int(df['tahun'].max())})")
+        st.subheader(f"📊 Rating & Perubahan Total Belanja Pemerintah ({int(df['tahun'].max())})")
+        st.caption(
+            "**Rating** dikategorikan berdasarkan kuartil Total Belanja antar kabupaten (Kuartil 1=Rendah, Q4=Sangat Tinggi). "
+            "**Perubahan** membandingkan dengan tahun sebelumnya."
+        )
+
         if "Total" in df.columns:
-            df_latest_gov = df[df["tahun"] == df["tahun"].max()].sort_values("Total", ascending=True)
-            fig_total = px.bar(
-                df_latest_gov, x="Total", y="kabupaten", orientation="h",
-                color="Total", color_continuous_scale="Purples",
-                text="Total",
-                labels={"Total": "Total Belanja (Miliar Rp)", "kabupaten": ""},
+            latest_year_gov = int(df["tahun"].max())
+            prev_year_gov = latest_year_gov - 1
+
+            latest_gov = df[df["tahun"] == latest_year_gov][["kabupaten", "Total"]].copy()
+            prev_gov = df[df["tahun"] == prev_year_gov][["kabupaten", "Total"]].copy()
+
+            rating_gov = latest_gov.merge(prev_gov, on="kabupaten", suffixes=("_now", "_prev"), how="left")
+            rating_gov["Δ (Miliar Rp)"] = rating_gov["Total_now"] - rating_gov["Total_prev"]
+            rating_gov["Δ (%)"] = rating_gov.apply(
+                lambda r: kpi_delta(r["Total_now"], r["Total_prev"]), axis=1
             )
-            fig_total.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
-            fig_total.update_layout(height=max(350, 28 * len(df_latest_gov)), margin=dict(t=20))
-            st.plotly_chart(fig_total, use_container_width=True)
+
+            # Kuartil dari data tahun terkini
+            q = rating_gov["Total_now"].quantile([0.25, 0.5, 0.75])
+            rating_gov["Rating"] = rating_gov["Total_now"].apply(lambda v: rate_quartile(v, q))
+
+            rating_gov = rating_gov.sort_values("Total_now", ascending=False).reset_index(drop=True)
+
+            disp_gov = rating_gov[["kabupaten", "Total_now", "Δ (Miliar Rp)", "Δ (%)", "Rating"]].copy()
+            disp_gov.columns = ["Kabupaten/Kota", "Total Belanja (Miliar Rp)", "Perubahan (Miliar Rp)", "Perubahan (%)", "Rating"]
+
+            st.dataframe(
+                disp_gov.style.apply(
+                    lambda r: _build_rating_row_style(r, is_good_when_high=True), axis=1
+                ).format({
+                    "Total Belanja (Miliar Rp)": lambda x: fmt_number(x, 2),
+                    "Perubahan (Miliar Rp)": lambda x: fmt_number(x, 2),
+                    "Perubahan (%)": lambda x: f"{x:+.1f}%" if x is not None and not pd.isna(x) else "-",
+                }),
+                use_container_width=True,
+                height=min(500, 35 * len(disp_gov) + 40),
+            )
+
+            # Bar chart perubahan total belanja
+            fig_gov_change = px.bar(
+                rating_gov, x="Δ (Miliar Rp)", y="kabupaten", orientation="h",
+                color="Δ (Miliar Rp)", color_continuous_scale="RdYlGn",
+                title=f"Perubahan Total Belanja vs Tahun Sebelumnya ({prev_year_gov} → {latest_year_gov})",
+                labels={"Δ (Miliar Rp)": "Perubahan Belanja (Miliar Rp)", "kabupaten": ""},
+                hover_data={"Rating": True, "Δ (%)": ":.1f"},
+            )
+            fig_gov_change.update_traces(texttemplate="%{x:+,.1f}", textposition="outside")
+            fig_gov_change.update_layout(
+                yaxis=dict(categoryorder="total ascending"),
+                height=max(400, 28 * len(rating_gov)),
+                margin=dict(t=40),
+            )
+            st.plotly_chart(fig_gov_change, use_container_width=True)
+        else:
+            st.info("Kolom 'Total' tidak tersedia pada dataset.")
 
 # ----------------------------------------------------------------------------
-# TAB 4 — INDIKATOR SOSIAL
+# TAB 4 — INDIKATOR SOSIAL (DENGAN RATING & PERUBAHAN)
 # ----------------------------------------------------------------------------
 with tab_sosial:
     st.subheader("Perkembangan Indikator Sosial-Ekonomi")
     social_available = [c for c in SOCIAL_COLS if c in df.columns]
-    metric_choice = st.selectbox("Pilih indikator", social_available, format_func=lambda c: SOCIAL_COLS[c])
+
+    # ========================================================================
+    # 🆕 BARU: PANEL RATING & PERUBAHAN INDIKATOR SOSIAL
+    # ========================================================================
+    rating_candidates = [c for c in ["ipm", "gini", "miskin", "unemploy"] if c in social_available]
+    if rating_candidates:
+        st.subheader("🏆 Rating & Perubahan Indikator Sosial Terkini")
+        st.caption(
+            "Rating mengikuti **standar klasifikasi BPS**. Perubahan (Δ) dihitung dari tahun sebelumnya. "
+            "🟢 Hijau = kondisi baik, 🟡 Kuning = sedang, 🔴 Merah = kondisi buruk."
+        )
+
+        rating_indicator = st.selectbox(
+            "Pilih indikator untuk dilihat Rating & Perubahannya:",
+            rating_candidates,
+            format_func=lambda c: SOCIAL_COLS[c],
+            key="rating_indicator_sel",
+        )
+
+        latest_year_soc = int(df["tahun"].max())
+        prev_year_soc = latest_year_soc - 1
+
+        latest_soc = df[df["tahun"] == latest_year_soc][["kabupaten", rating_indicator]].copy()
+        prev_soc = df[df["tahun"] == prev_year_soc][["kabupaten", rating_indicator]].copy()
+
+        rating_soc = latest_soc.merge(prev_soc, on="kabupaten", suffixes=("_now", "_prev"), how="left")
+        rating_soc["Δ"] = rating_soc[f"{rating_indicator}_now"] - rating_soc[f"{rating_indicator}_prev"]
+        rating_soc["Δ (%)"] = rating_soc.apply(
+            lambda r: kpi_delta(r[f"{rating_indicator}_now"], r[f"{rating_indicator}_prev"]), axis=1
+        )
+
+        # Pilih fungsi rating sesuai indikator
+        rating_map = {
+            "ipm": rate_ipm,
+            "gini": rate_gini,
+            "miskin": rate_miskin,
+            "unemploy": rate_unemploy,
+        }
+        rating_soc["Rating"] = rating_soc[f"{rating_indicator}_now"].apply(rating_map[rating_indicator])
+
+        # Urutkan: IPM descending (tinggi=baik), yang lain ascending (rendah=baik)
+        is_good_when_high = (rating_indicator == "ipm")
+        rating_soc = rating_soc.sort_values(
+            f"{rating_indicator}_now",
+            ascending=(not is_good_when_high)
+        ).reset_index(drop=True)
+
+        disp_soc = rating_soc[["kabupaten", f"{rating_indicator}_now", "Δ", "Δ (%)", "Rating"]].copy()
+        disp_soc.columns = ["Kabupaten/Kota", "Nilai Terkini", "Perubahan (Δ)", "Perubahan (%)", "Rating"]
+
+        dec = 3 if rating_indicator == "gini" else 2
+        st.dataframe(
+            disp_soc.style.apply(
+                lambda r: _build_rating_row_style(r, is_good_when_high=is_good_when_high), axis=1
+            ).format({
+                "Nilai Terkini": lambda x: fmt_number(x, dec),
+                "Perubahan (Δ)": lambda x: fmt_number(x, dec),
+                "Perubahan (%)": lambda x: f"{x:+.1f}%" if x is not None and not pd.isna(x) else "-",
+            }),
+            use_container_width=True,
+            height=min(500, 35 * len(disp_soc) + 40),
+        )
+
+        # Bar chart perubahan
+        fig_soc_chg = px.bar(
+            rating_soc, x="Δ", y="kabupaten", orientation="h",
+            color="Δ", color_continuous_scale="RdYlGn" if not is_good_when_high else "RdYlGn_r",
+            title=f"Perubahan {SOCIAL_COLS[rating_indicator]} — {prev_year_soc} → {latest_year_soc}",
+            labels={"Δ": "Perubahan", "kabupaten": ""},
+            hover_data={"Rating": True, "Δ (%)": ":.1f"},
+        )
+        fig_soc_chg.update_traces(texttemplate="%{x:+,.3f}" if rating_indicator == "gini" else "%{x:+,.2f}", textposition="outside")
+        fig_soc_chg.update_layout(
+            yaxis=dict(categoryorder="total ascending"),
+            height=max(400, 28 * len(rating_soc)),
+            margin=dict(t=40),
+        )
+        st.plotly_chart(fig_soc_chg, use_container_width=True)
+    else:
+        st.info("Indikator yang bisa dirating (IPM, Gini, Kemiskinan, Pengangguran) tidak tersedia.")
+
+    # =========================================================================
+    st.markdown("---")
+    metric_choice = st.selectbox("Pilih indikator untuk tren", social_available, format_func=lambda c: SOCIAL_COLS[c])
 
     fig_line = px.line(
         df.sort_values("tahun"), x="tahun", y=metric_choice, color="kabupaten", markers=True,
@@ -607,7 +813,7 @@ with tab_sosial:
             st.plotly_chart(fig_sc2, use_container_width=True)
 
 # ----------------------------------------------------------------------------
-# TAB 5 — PERBANDINGAN WILAYAH
+# TAB 5 — PERBANDINGAN WILAYAH (DENGAN RATING & PERUBAHAN)
 # ----------------------------------------------------------------------------
 with tab_perbandingan:
     st.subheader("Perbandingan Antar Kabupaten/Kota")
@@ -636,6 +842,72 @@ with tab_perbandingan:
         )
         fig_scatter_all.update_layout(height=500)
         st.plotly_chart(fig_scatter_all, use_container_width=True)
+
+    # ========================================================================
+    # 🆕 BARU: RATING & PERUBAHAN PER INDIKATOR PERBANDINGAN
+    # ========================================================================
+    st.markdown("---")
+    st.subheader(f"📊 Rating & Perubahan — {SOCIAL_COLS.get(pivot_metric, pivot_metric)}")
+    st.caption(
+        "Rating dihitung berdasarkan **kuartil** dari seluruh kabupaten. "
+        "Perubahan (Δ) membandingkan tahun terkini dengan tahun sebelumnya."
+    )
+
+    latest_year_pv = int(df["tahun"].max())
+    prev_year_pv = latest_year_pv - 1
+
+    latest_pv = df[df["tahun"] == latest_year_pv][["kabupaten", pivot_metric]].copy()
+    prev_pv = df[df["tahun"] == prev_year_pv][["kabupaten", pivot_metric]].copy()
+
+    rating_pv = latest_pv.merge(prev_pv, on="kabupaten", suffixes=("_now", "_prev"), how="left")
+    rating_pv["Δ"] = rating_pv[f"{pivot_metric}_now"] - rating_pv[f"{pivot_metric}_prev"]
+    rating_pv["Δ (%)"] = rating_pv.apply(
+        lambda r: kpi_delta(r[f"{pivot_metric}_now"], r[f"{pivot_metric}_prev"]), axis=1
+    )
+
+    q_pv = rating_pv[f"{pivot_metric}_now"].quantile([0.25, 0.5, 0.75])
+    rating_pv["Rating"] = rating_pv[f"{pivot_metric}_now"].apply(lambda v: rate_quartile(v, q_pv))
+
+    # Tentukan arah pengurutan: PDRB/IPM/pertumbuhan = tinggi baik (descending)
+    # Gini/Miskin/Pengangguran = rendah baik (ascending)
+    good_when_high_metrics = ["PDRB", "ipm", "pertumbuhan", "pdrb_perkap", "pop_ribujiwa", "pct_formal", "pend_miskin"]
+    is_good_high = pivot_metric in good_when_high_metrics
+
+    rating_pv = rating_pv.sort_values(
+        f"{pivot_metric}_now",
+        ascending=(not is_good_high)
+    ).reset_index(drop=True)
+
+    disp_pv = rating_pv[["kabupaten", f"{pivot_metric}_now", "Δ", "Δ (%)", "Rating"]].copy()
+    disp_pv.columns = ["Kabupaten/Kota", "Nilai Terkini", "Perubahan (Δ)", "Perubahan (%)", "Rating"]
+
+    dec_pv = 3 if pivot_metric == "gini" else (1 if pivot_metric == "PDRB" else 2)
+    st.dataframe(
+        disp_pv.style.apply(
+            lambda r: _build_rating_row_style(r, is_good_when_high=is_good_high), axis=1
+        ).format({
+            "Nilai Terkini": lambda x: fmt_number(x, dec_pv),
+            "Perubahan (Δ)": lambda x: fmt_number(x, dec_pv),
+            "Perubahan (%)": lambda x: f"{x:+.1f}%" if x is not None and not pd.isna(x) else "-",
+        }),
+        use_container_width=True,
+        height=min(500, 35 * len(disp_pv) + 40),
+    )
+
+    # Bar chart perubahan indikator
+    fig_pv_chg = px.bar(
+        rating_pv, x="Δ", y="kabupaten", orientation="h",
+        color="Δ", color_continuous_scale="RdYlGn" if not is_good_high else "RdYlGn_r",
+        title=f"Perubahan {SOCIAL_COLS.get(pivot_metric, pivot_metric)} — {prev_year_pv} → {latest_year_pv}",
+        labels={"Δ": "Perubahan", "kabupaten": ""},
+        hover_data={"Rating": True, "Δ (%)": ":.1f"},
+    )
+    fig_pv_chg.update_layout(
+        yaxis=dict(categoryorder="total ascending"),
+        height=max(400, 28 * len(rating_pv)),
+        margin=dict(t=40),
+    )
+    st.plotly_chart(fig_pv_chg, use_container_width=True)
 
 # ----------------------------------------------------------------------------
 # TAB 6 — MODEL REGRESI PANEL
