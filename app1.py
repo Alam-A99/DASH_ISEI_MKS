@@ -88,7 +88,7 @@ DEPENDENT_VAR_OPTIONS = {
     "miskin": "Tingkat Kemiskinan (%)",
 }
 
-DEFAULT_GITHUB_URL = "https://github.com/Alam-A99/DASH_ISEI_MKS/blob/main/OK_Panel_PDRB_KAB-Kota_Sulsel_14-25.xlsx"
+DEFAULT_GITHUB_URL = "https://github.com/Alam-A99/DASH_ISEI_MKS/blob/main/OK_Panel_PDRB_KAB-Kota_Sulsel_14-25.csv"
 
 # ----------------------------------------------------------------------------
 # SAMPLE DATA (fallback)
