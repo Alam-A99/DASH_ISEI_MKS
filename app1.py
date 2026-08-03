@@ -522,8 +522,8 @@ with tab_gov:
         st.plotly_chart(fig_gov_bar, use_container_width=True)
 
         st.markdown("---")
-        st.subheader("🔍 Fungsi Belanja yang Berasosiasi dengan Ketimpangan (Gini)")
-        st.caption("Korelasi antara **pertumbuhan tahunan (%) tiap fungsi belanja** dan **Rasio Gini**.")
+        st.subheader("🔍 Belanja (Fungsi) yang Berasosiasi dengan Ketimpangan (Gini)")
+        st.caption("Korelasi antara **pertumbuhan tahunan (%) tiap belanja** dan **Rasio Gini**.")
 
         g_gov = df.sort_values(["kabupaten", "tahun"]).copy()
         for col in gov_cols:
